@@ -4,3 +4,8 @@ indexes:
   properties:
   - name: date
     direction: desc
+- kind: Recipe
+  properties:
+    - name: user_id
+    - name: date
+      direction: desc

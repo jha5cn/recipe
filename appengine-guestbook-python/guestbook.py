@@ -16,12 +16,15 @@
 
 # [START imports]
 import os
-import urllib
 import re
+import time
+import urllib
 
+from amazonproduct import API
+from bs4 import BeautifulSoup
 from google.appengine.api import users
 from google.appengine.ext import ndb
-from bs4 import BeautifulSoup
+#from lxml import etree
 
 import jinja2
 import webapp2
@@ -103,7 +106,6 @@ class MainPage(webapp2.RequestHandler):
         self.response.write(template.render(template_values))
 # [END main_page]
 
-
 # [START guestbook]
 class Guestbook(webapp2.RequestHandler):
 
@@ -124,58 +126,131 @@ class Guestbook(webapp2.RequestHandler):
 
         #NEW CODE Here
         link = self.request.get('content')
-        link_contents = urllib.urlopen(link)
-        recipe_contents = link_contents.read()
-        bs = BeautifulSoup(recipe_contents, "html.parser")
+        if link and link.strip():
+            link_contents = urllib.urlopen(link)
+            recipe_contents = link_contents.read()
+            bs = BeautifulSoup(recipe_contents, "html.parser")
 
-        #Get recipe ingredients
-        ingreds = bs.find_all(itemprop='ingredients')
-        ingredient_list = ""
+            #Get recipe ingredients
+            ingreds = bs.find_all(itemprop='ingredients')
+            ingredient_list = ""
 
-        for ingredient in ingreds:
-            ingredient_list += ingredient.text + ","
+            for ingredient in ingreds:
+                ingredient_list += ingredient.text + "|"
 
-        if ingredient_list.endswith(','):
-            ingredient_list = ingredient_list[:-1]
+            if ingredient_list.endswith('|'):
+                ingredient_list = ingredient_list[:-1]
 
-        #Get recipe title
-        recipe_title = bs.title.string
+            #Get recipe title
+            recipe_title = bs.title.string
 
-        #Get recipe directions
-        recipe_directions_unparsed = bs.find(itemprop='recipeInstructions')
-        recipe_directions_result = ""
-        for direction_tag in recipe_directions_unparsed.contents:
-            recipe_directions_result += direction_tag.string + ","
-        if (recipe_directions_result.endswith(',')):
-            recipe_directions_result = recipe_directions_result[:-1]
+            #Get recipe directions
+            recipe_directions_unparsed = bs.find(itemprop='recipeInstructions')
+            recipe_directions_result = ""
+            for direction_tag in recipe_directions_unparsed.contents:
+                if direction_tag.string and direction_tag.string.strip():
+                    recipe_directions_result += direction_tag.string + ","
+            if (recipe_directions_result.endswith(',')):
+                recipe_directions_result = recipe_directions_result[:-1]
 
-        #Save recipe with a user tied to it
-        if (users.get_current_user()):
-            recipe = Recipe()   
-            recipe.user_id = users.get_current_user().user_id()
-            recipe.title = recipe_title
-            recipe.ingredients = ingredient_list
-            recipe.directions = recipe_directions_result
-            recipe.put()
+            #Save recipe with a user tied to it
+            if (users.get_current_user()):
+                recipe = Recipe()   
+                recipe.user_id = users.get_current_user().user_id()
+                recipe.title = recipe_title
+                recipe.ingredients = ingredient_list
+                recipe.directions = recipe_directions_result
+                recipe.put()
 
-        greeting.content = ingredient_list
-        greeting.put()
+            greeting.content = ingredient_list
+            greeting.put()
 
-        """template_values = {
-            'content': recipe_contents
-        }
+            """template_values = {
+                'content': recipe_contents
+            }
 
-        template = JINJA_ENVIRONMENT.get_template('sign.html')
-        self.response.write(template.render(template_values))"""
+            template = JINJA_ENVIRONMENT.get_template('sign.html')
+            self.response.write(template.render(template_values))"""
         query_params = {'guestbook_name': guestbook_name}
+        time.sleep(0.5)
         self.redirect('/?' + urllib.urlencode(query_params))
 
 # [END guestbook]
 
+#START Collector that sums up all ingredients
+class Collector(webapp2.RequestHandler):
+    def get(self):
+        user = users.get_current_user()
+        if user:
+            recipe_query = Recipe.query().filter(ndb.GenericProperty("user_id") == user.user_id()).order(-Recipe.date)
+            recipes = recipe_query.fetch(10)
+
+        ingredient_dictionary = {}
+
+        # amazonApi = API(locale='us')
+
+        for recipe in recipes:
+            #After it's split it's this: 1 (32 ounce) package frozen hash brown potatoes
+            single_whole_ingredient = recipe.ingredients.split('|')
+
+            for single_ingredient in single_whole_ingredient:
+                #After it's split it's this: [1, (32, ounce), package, frozen, hash, brown, potatoes]
+                single_ingredient_quantity_and_name = single_ingredient.split(' ')
+                quantity = 0
+                ingredient_name = ""
+
+                for single_ingredient_base_unit in single_ingredient_quantity_and_name:
+                    if (RepresentsInt(single_ingredient_base_unit)):
+                        quantity = int(single_ingredient_base_unit)
+                    else:
+                        ingredient_name += single_ingredient_base_unit + " "
+
+                if ingredient_name in ingredient_dictionary:
+                    ingredient_dictionary[ingredient_name][0] += quantity
+                else:
+                    ingredient_dictionary.setdefault(ingredient_name, [])
+                    ingredient_dictionary[ingredient_name].append(quantity)
+                    base_url = "https://www.amazon.com/s/ref=nb_sb_noss?url=search-alias%3Damazonfresh&field-keywords="
+                    last_two_words_ingredients = ingredient_name.split(' ')
+                    search_url = base_url + last_two_words_ingredients[len(last_two_words_ingredients)-3] + "+" + last_two_words_ingredients[len(last_two_words_ingredients)-2]
+                    ingredient_dictionary[ingredient_name].append(search_url)
+
+               # amazonApi.item_search('GourmetFood', Keywords=ingredient_name)
+
+        template_values = {
+            'ingredient_totals': ingredient_dictionary,
+        }
+
+        template = JINJA_ENVIRONMENT.get_template('collect.html')
+        self.response.write(template.render(template_values))
+#END Collector
+
+class Deleter(webapp2.RequestHandler):
+    def post(self):
+        user = users.get_current_user()
+        if user:
+            recipe_query = Recipe.query().filter(ndb.GenericProperty("user_id") == user.user_id()).order(-Recipe.date)
+            recipes = recipe_query.fetch(10)
+
+        for recipe in recipes:
+            recipe.key.delete()
+
+        time.sleep(0.5)
+        self.redirect('/')
+
+#
+def RepresentsInt(s):
+    try: 
+        int(s)
+        return True
+    except ValueError:
+        return False
 
 # [START app]
 app = webapp2.WSGIApplication([
     ('/', MainPage),
     ('/sign', Guestbook),
+    ('/collect', Collector),
+    ('/delete', Deleter),
 ], debug=True)
 # [END app]

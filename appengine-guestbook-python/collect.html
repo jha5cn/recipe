@@ -43,14 +43,25 @@
           </button>
           <a class="brand" href="#">App Engine Guestbook</a>
           <div class="nav-collapse collapse pull-right">
-            <a href="{{ url|safe }}" class="btn">{{ url_linktext }}</a>
+            <!--<a href="{{ url|safe }}" class="btn">{{ url_linktext }}</a>-->
           </div>
         </div>
       </div>
     </div>
     <div class="container">
+      {%if ingredient_totals != None %}
+        {% for ingredient_name, ingredient_values in ingredient_totals.iteritems() %}
+          <div class="row">
+            <h5> Ingredient Name </h5>
+            <blockquote>{{ ingredient_name }}</blockquote>
+            <h5> Ingredient Quantity </h5>
+            <blockquote>{{ ingredient_values[0] }}</blockquote>
+            <a href="{{ ingredient_values[1] }}">Purchase from Amazon</a>
+          </div>
+        {% endfor %}
+      {% endif %}
       <!-- [START greetings] -->
-      {% if recipes != None %}
+      <!--{% if recipes != None %}
       {% for recipe in recipes %}
       <div class="row">
           <h5> Recipe Title </h5>
@@ -61,30 +72,15 @@
           <blockquote>{{ recipe.directions }}</blockquote>
       </div>
       {% endfor %}
-      {% endif %}
+      {% endif %}-->
       <!-- [END greetings] -->
 
-      <form action="/sign?guestbook_name={{ guestbook_name }}" method="post">
-        <div><textarea name="content" class="input-block-level" rows="1"></textarea></div>
-        <div><input type="submit" class="btn btn-large btn-primary" value="Get Recipe Ingredients"></div>
-      </form>
-
-      <form action="/collect" method="get">
-        <div><input type="submit" class="btn btn-large btn-primary" value="Collect Total Ingredient List"></div>
-      </form>
-
-      <form action="/delete" method="post">
-        <div><input type="submit" class="btn btn-large btn-primary" value="Delete Current Recipes"></div>
-      </form>      
+      <!--<form action="/sign" method="get">
+        <div><input type="submit" class="btn btn-large btn-primary" value="Get Amazon links"></div>
+      </form>-->
 
       <hr>
 
-      <form>Guestbook name:
-        <input value="{{ guestbook_name }}" name="guestbook_name">
-        <input type="submit" value="switch">
-      </form>
-
-      <a href="{{ url|safe }}">{{ url_linktext }}</a>
     </div>
   </body>
 </html>
